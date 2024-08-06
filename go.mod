@@ -1,4 +1,4 @@
-module github.com/blockthrough/otelutil
+module github.com/blockthrough/otelutil.go
 
 go 1.22.4
 
