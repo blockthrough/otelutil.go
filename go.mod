@@ -1,6 +1,6 @@
 module github.com/blockthrough/otelutil.go
 
-go 1.22.4
+go 1.22
 
 require (
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/trace v1.24.1
