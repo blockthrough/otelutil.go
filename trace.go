@@ -68,7 +68,7 @@ func GetWithMemo(name string) func() Tracer {
 
 func RecordError(span oteltrace.Span, err *error) func() {
 	return func() {
-		if *err == nil {
+		if err != nil && *err != nil {
 			span.RecordError(*err)
 		}
 	}
