@@ -79,9 +79,10 @@ func NewHandler(handler http.Handler, operation string, opts ...otelhttp.Option)
 var NewTransport = otelhttp.NewTransport
 
 type googleTraceOpt struct {
-	name       string
-	projectId  string
-	sampleRate float64
+	name          string
+	projectId     string
+	sampleRate    float64
+	onlySpanNames []string
 }
 
 type GoogleTraceOption func(*googleTraceOpt)
@@ -101,6 +102,12 @@ func WithProjectId(projectId string) GoogleTraceOption {
 func WithName(name string) GoogleTraceOption {
 	return func(opt *googleTraceOpt) {
 		opt.name = name
+	}
+}
+
+func WithOnlySpanNames(onlyNames ...string) GoogleTraceOption {
+	return func(opt *googleTraceOpt) {
+		opt.onlySpanNames = onlyNames
 	}
 }
 
@@ -165,6 +172,10 @@ func SetupGoogleTraceOTEL(ctx context.Context, optFns ...GoogleTraceOption) (shu
 		),
 		trace.WithBatcher(exporter),
 		trace.WithResource(res),
+
+		trace.WithSpanProcessor(
+			WithSpanFilter(trace.NewSimpleSpanProcessor(exporter), opt.onlySpanNames...),
+		),
 	)
 	shutdownFuncs = append(shutdownFuncs, tp.Shutdown)
 	otel.SetTracerProvider(tp)
