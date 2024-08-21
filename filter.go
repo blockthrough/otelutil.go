@@ -59,3 +59,15 @@ func WithSpanFilterOnlyNames(names ...string) SpanProcessorWrapper {
 		return ok
 	})
 }
+
+func WithSpanFilterOnlyScopeNames(names ...string) SpanProcessorWrapper {
+	nameSet := make(map[string]struct{}, len(names))
+	for _, name := range names {
+		nameSet[name] = struct{}{}
+	}
+
+	return WithSpanFilter(func(span trace.ReadOnlySpan) bool {
+		_, ok := nameSet[span.InstrumentationLibrary().Name]
+		return ok
+	})
+}
