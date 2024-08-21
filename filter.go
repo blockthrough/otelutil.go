@@ -6,40 +6,27 @@ import (
 	"go.opentelemetry.io/otel/sdk/trace"
 )
 
+// if this function returns false, the span will be filtered out
+type SpanFilterFunc func(span trace.ReadOnlySpan) bool
+
 type filteringSpanProcessor struct {
-	namesMap map[string]struct{}
+	filterFn SpanFilterFunc
 	sp       trace.SpanProcessor
 }
 
 var _ trace.SpanProcessor = (*filteringSpanProcessor)(nil)
 
-func (f *filteringSpanProcessor) needsToBeFiltered(spanName string) bool {
-	if len(f.namesMap) == 0 {
-		return false
-	}
-	_, ok := f.namesMap[spanName]
-	return !ok
-}
-
 func (f *filteringSpanProcessor) OnStart(parent context.Context, s trace.ReadWriteSpan) {
-	spanName := s.Name()
-	if f.needsToBeFiltered(spanName) {
-		// No further processing if the span is not an application span
+	if !f.filterFn(s) {
 		return
 	}
-
-	// Continue processing if it's an application span
 	f.sp.OnStart(parent, s)
 }
 
 func (f *filteringSpanProcessor) OnEnd(s trace.ReadOnlySpan) {
-	spanName := s.Name()
-	if f.needsToBeFiltered(spanName) {
-		// No further processing if the span is not an application span
+	if !f.filterFn(s) {
 		return
 	}
-
-	// Continue processing if it's an application span
 	f.sp.OnEnd(s)
 }
 
@@ -51,13 +38,20 @@ func (f *filteringSpanProcessor) ForceFlush(ctx context.Context) error {
 	return f.sp.ForceFlush(ctx)
 }
 
-func WithSpanFilter(sp trace.SpanProcessor, onlyNames ...string) trace.SpanProcessor {
-	namesMap := make(map[string]struct{}, len(onlyNames))
-	for _, name := range onlyNames {
-		namesMap[name] = struct{}{}
-	}
+func WithSpanFilter(sp trace.SpanProcessor, filterFn SpanFilterFunc) trace.SpanProcessor {
 	return &filteringSpanProcessor{
 		sp:       sp,
-		namesMap: namesMap,
+		filterFn: filterFn,
 	}
+}
+
+func WithSpanFilterOnlyNames(sp trace.SpanProcessor, names ...string) trace.SpanProcessor {
+	nameSet := make(map[string]struct{}, len(names))
+	for _, name := range names {
+		nameSet[name] = struct{}{}
+	}
+	return WithSpanFilter(sp, func(span trace.ReadOnlySpan) bool {
+		_, ok := nameSet[span.Name()]
+		return ok
+	})
 }

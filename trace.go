@@ -83,6 +83,7 @@ type googleTraceOpt struct {
 	projectId     string
 	sampleRate    float64
 	onlySpanNames []string
+	spanProcessor trace.SpanProcessor
 }
 
 type GoogleTraceOption func(*googleTraceOpt)
@@ -105,9 +106,9 @@ func WithName(name string) GoogleTraceOption {
 	}
 }
 
-func WithOnlySpanNames(onlyNames ...string) GoogleTraceOption {
+func WithSpanProcessor(sp trace.SpanProcessor) GoogleTraceOption {
 	return func(opt *googleTraceOpt) {
-		opt.onlySpanNames = onlyNames
+		opt.spanProcessor = sp
 	}
 }
 
@@ -158,7 +159,7 @@ func SetupGoogleTraceOTEL(ctx context.Context, optFns ...GoogleTraceOption) (shu
 		return err
 	}
 
-	tp := trace.NewTracerProvider(
+	providerOpts := []trace.TracerProviderOption{
 		trace.WithSampler(
 			// NewAlwaysErrorSampler is a custom sampler that samples all error spans
 			// and delegates the sampling decision for non-error spans to the base sampler.
@@ -172,11 +173,13 @@ func SetupGoogleTraceOTEL(ctx context.Context, optFns ...GoogleTraceOption) (shu
 		),
 		trace.WithBatcher(exporter),
 		trace.WithResource(res),
+	}
 
-		trace.WithSpanProcessor(
-			WithSpanFilter(trace.NewSimpleSpanProcessor(exporter), opt.onlySpanNames...),
-		),
-	)
+	if opt.spanProcessor != nil {
+		providerOpts = append(providerOpts, trace.WithSpanProcessor(opt.spanProcessor))
+	}
+
+	tp := trace.NewTracerProvider(providerOpts...)
 	shutdownFuncs = append(shutdownFuncs, tp.Shutdown)
 	otel.SetTracerProvider(tp)
 
