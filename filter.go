@@ -8,6 +8,7 @@ import (
 
 // if this function returns false, the span will be filtered out
 type SpanFilterFunc func(span trace.ReadOnlySpan) bool
+type SpanProcessorWrapper func(sp trace.SpanProcessor) trace.SpanProcessor
 
 type filteringSpanProcessor struct {
 	filterFn SpanFilterFunc
@@ -38,19 +39,22 @@ func (f *filteringSpanProcessor) ForceFlush(ctx context.Context) error {
 	return f.sp.ForceFlush(ctx)
 }
 
-func WithSpanFilter(sp trace.SpanProcessor, filterFn SpanFilterFunc) trace.SpanProcessor {
-	return &filteringSpanProcessor{
-		sp:       sp,
-		filterFn: filterFn,
+func WithSpanFilter(filterFn SpanFilterFunc) SpanProcessorWrapper {
+	return func(sp trace.SpanProcessor) trace.SpanProcessor {
+		return &filteringSpanProcessor{
+			sp:       sp,
+			filterFn: filterFn,
+		}
 	}
 }
 
-func WithSpanFilterOnlyNames(sp trace.SpanProcessor, names ...string) trace.SpanProcessor {
+func WithSpanFilterOnlyNames(names ...string) SpanProcessorWrapper {
 	nameSet := make(map[string]struct{}, len(names))
 	for _, name := range names {
 		nameSet[name] = struct{}{}
 	}
-	return WithSpanFilter(sp, func(span trace.ReadOnlySpan) bool {
+
+	return WithSpanFilter(func(span trace.ReadOnlySpan) bool {
 		_, ok := nameSet[span.Name()]
 		return ok
 	})
