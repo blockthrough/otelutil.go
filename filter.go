@@ -71,3 +71,12 @@ func WithSpanFilterOnlyScopeNames(names ...string) SpanProcessorWrapper {
 		return ok
 	})
 }
+
+func WithMultipleSpanFilters(wrappers ...SpanProcessorWrapper) SpanProcessorWrapper {
+	return func(sp trace.SpanProcessor) trace.SpanProcessor {
+		for _, wrapper := range wrappers {
+			sp = wrapper(sp)
+		}
+		return sp
+	}
+}
