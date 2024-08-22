@@ -67,7 +67,7 @@ func WithSpanFilterOnlyScopeNames(names ...string) SpanProcessorWrapper {
 	}
 
 	return WithSpanFilter(func(span trace.ReadOnlySpan) bool {
-		_, ok := nameSet[span.InstrumentationLibrary().Name]
+		_, ok := nameSet[span.InstrumentationScope().Name]
 		return ok
 	})
 }
