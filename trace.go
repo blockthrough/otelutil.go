@@ -54,6 +54,11 @@ func Get(name string) Tracer {
 	return otel.GetTracerProvider().Tracer(name)
 }
 
+// GetWithMemo returns a function that returns the Tracer object based on the name.
+// usually this function needs to be called only once at global scope of the package
+// and te reason it returns a function is that to defer getting tracer object until
+// it has been initliazed. Usually initialization of the tracer object is done in the
+// main function and it requires some time to initialize the object globally
 func GetWithMemo(name string) func() Tracer {
 	var tracer Tracer
 	var once sync.Once
@@ -82,7 +87,6 @@ type googleTraceOpt struct {
 	name                 string
 	projectId            string
 	sampleRate           float64
-	onlySpanNames        []string
 	spanProcessorWrapper SpanProcessorWrapper
 }
 
