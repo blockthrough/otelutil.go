@@ -24,6 +24,7 @@ import (
 // Tracer is an alias for oteltrace.Tracer.
 // to simplify the import path for the user.
 type Tracer = oteltrace.Tracer
+type ReadOnlySpan = trace.ReadOnlySpan
 
 // Use SpanFromContext to get the span from the context.
 var SpanFromContext = oteltrace.SpanFromContext
