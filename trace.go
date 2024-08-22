@@ -24,6 +24,7 @@ import (
 // Tracer is an alias for oteltrace.Tracer.
 // to simplify the import path for the user.
 type Tracer = oteltrace.Tracer
+type ReadOnlySpan = trace.ReadOnlySpan
 
 // Use SpanFromContext to get the span from the context.
 var SpanFromContext = oteltrace.SpanFromContext
@@ -54,7 +55,12 @@ func Get(name string) Tracer {
 	return otel.GetTracerProvider().Tracer(name)
 }
 
-func GetWithMemo(name string) func() Tracer {
+// GetDeferedTracer returns a function that returns the Tracer object based on the name.
+// usually this function needs to be called only once at global scope of the package
+// and te reason it returns a function is that to defer getting tracer object until
+// it has been initliazed. Usually initialization of the tracer object is done in the
+// main function and it requires some time to initialize the object globally
+func GetDeferedTracer(name string) func() Tracer {
 	var tracer Tracer
 	var once sync.Once
 
@@ -79,9 +85,10 @@ func NewHandler(handler http.Handler, operation string, opts ...otelhttp.Option)
 var NewTransport = otelhttp.NewTransport
 
 type googleTraceOpt struct {
-	name       string
-	projectId  string
-	sampleRate float64
+	name                 string
+	projectId            string
+	sampleRate           float64
+	spanProcessorWrapper SpanProcessorWrapper
 }
 
 type GoogleTraceOption func(*googleTraceOpt)
@@ -101,6 +108,12 @@ func WithProjectId(projectId string) GoogleTraceOption {
 func WithName(name string) GoogleTraceOption {
 	return func(opt *googleTraceOpt) {
 		opt.name = name
+	}
+}
+
+func WithSpanProcessor(spw SpanProcessorWrapper) GoogleTraceOption {
+	return func(opt *googleTraceOpt) {
+		opt.spanProcessorWrapper = spw
 	}
 }
 
@@ -151,7 +164,7 @@ func SetupGoogleTraceOTEL(ctx context.Context, optFns ...GoogleTraceOption) (shu
 		return err
 	}
 
-	tp := trace.NewTracerProvider(
+	providerOpts := []trace.TracerProviderOption{
 		trace.WithSampler(
 			// NewAlwaysErrorSampler is a custom sampler that samples all error spans
 			// and delegates the sampling decision for non-error spans to the base sampler.
@@ -163,9 +176,26 @@ func SetupGoogleTraceOTEL(ctx context.Context, optFns ...GoogleTraceOption) (shu
 				),
 			),
 		),
-		trace.WithBatcher(exporter),
 		trace.WithResource(res),
-	)
+	}
+
+	if opt.spanProcessorWrapper != nil {
+		providerOpts = append(
+			providerOpts,
+			trace.WithSpanProcessor(
+				opt.spanProcessorWrapper(
+					trace.NewBatchSpanProcessor(exporter),
+				),
+			),
+		)
+	} else {
+		providerOpts = append(
+			providerOpts,
+			trace.WithBatcher(exporter),
+		)
+	}
+
+	tp := trace.NewTracerProvider(providerOpts...)
 	shutdownFuncs = append(shutdownFuncs, tp.Shutdown)
 	otel.SetTracerProvider(tp)
 
