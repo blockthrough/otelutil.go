@@ -175,7 +175,6 @@ func SetupGoogleTraceOTEL(ctx context.Context, optFns ...GoogleTraceOption) (shu
 				),
 			),
 		),
-		trace.WithBatcher(exporter),
 		trace.WithResource(res),
 	}
 
@@ -184,9 +183,14 @@ func SetupGoogleTraceOTEL(ctx context.Context, optFns ...GoogleTraceOption) (shu
 			providerOpts,
 			trace.WithSpanProcessor(
 				opt.spanProcessorWrapper(
-					trace.NewSimpleSpanProcessor(exporter),
+					trace.NewBatchSpanProcessor(exporter),
 				),
 			),
+		)
+	} else {
+		providerOpts = append(
+			providerOpts,
+			trace.WithBatcher(exporter),
 		)
 	}
 
