@@ -3,6 +3,7 @@ package otelutil
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"sync"
 
@@ -158,7 +159,7 @@ func SetupTraceOTEL(ctx context.Context, optFns ...TraceOption) (tp *trace.Trace
 		),
 	)
 	if err != nil {
-		return nil, nil, errors.New("failed to create resource: " + err.Error())
+		return nil, nil, fmt.Errorf("failed to create resource: %w", err)
 	}
 
 	var shutdownFuncs []func(context.Context) error
