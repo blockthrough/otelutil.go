@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"sync"
 
-	texporter "github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/trace"
 	"github.com/golang/glog"
 	"go.opentelemetry.io/contrib/detectors/gcp"
 	"go.opentelemetry.io/contrib/exporters/autoexport"
@@ -25,6 +24,7 @@ import (
 // to simplify the import path for the user.
 type Tracer = oteltrace.Tracer
 type ReadOnlySpan = trace.ReadOnlySpan
+type SpanExporter = trace.SpanExporter
 
 // Use SpanFromContext to get the span from the context.
 var SpanFromContext = oteltrace.SpanFromContext
@@ -91,43 +91,49 @@ func NewHandler(handler http.Handler, operation string, opts ...otelhttp.Option)
 
 var NewTransport = otelhttp.NewTransport
 
-type googleTraceOpt struct {
+type traceOpt struct {
 	name                 string
-	projectId            string
 	sampleRate           float64
 	spanProcessorWrapper SpanProcessorWrapper
+	exporter             SpanExporter
+	setDefaultTracer     bool
 }
 
-type GoogleTraceOption func(*googleTraceOpt)
+type TraceOption func(*traceOpt)
 
-func WithSampleRate(rate float64) GoogleTraceOption {
-	return func(opt *googleTraceOpt) {
+func WithSampleRate(rate float64) TraceOption {
+	return func(opt *traceOpt) {
 		opt.sampleRate = rate
 	}
 }
 
-func WithProjectId(projectId string) GoogleTraceOption {
-	return func(opt *googleTraceOpt) {
-		opt.projectId = projectId
-	}
-}
-
-func WithName(name string) GoogleTraceOption {
-	return func(opt *googleTraceOpt) {
+func WithName(name string) TraceOption {
+	return func(opt *traceOpt) {
 		opt.name = name
 	}
 }
 
-func WithSpanProcessor(spw SpanProcessorWrapper) GoogleTraceOption {
-	return func(opt *googleTraceOpt) {
+func WithSpanProcessor(spw SpanProcessorWrapper) TraceOption {
+	return func(opt *traceOpt) {
 		opt.spanProcessorWrapper = spw
 	}
 }
 
-func SetupGoogleTraceOTEL(ctx context.Context, optFns ...GoogleTraceOption) (shutdown func(context.Context) error, err error) {
-	opt := googleTraceOpt{
+func WithExporter(exporter SpanExporter) TraceOption {
+	return func(opt *traceOpt) {
+		opt.exporter = exporter
+	}
+}
+
+func WithDefaultTracer() TraceOption {
+	return func(opt *traceOpt) {
+		opt.setDefaultTracer = true
+	}
+}
+
+func SetupTraceOTEL(ctx context.Context, optFns ...TraceOption) (tp *trace.TracerProvider, shutdown func(context.Context) error, err error) {
+	opt := traceOpt{
 		name:       "default-name",
-		projectId:  "",
 		sampleRate: 1.0,
 	}
 
@@ -135,10 +141,8 @@ func SetupGoogleTraceOTEL(ctx context.Context, optFns ...GoogleTraceOption) (shu
 		fn(&opt)
 	}
 
-	// Create exporter.
-	exporter, err := texporter.New(texporter.WithProjectID(opt.projectId))
-	if err != nil {
-		glog.Fatalf("texporter.New: %v", err)
+	if opt.exporter == nil {
+		return nil, nil, errors.New("exporter is required")
 	}
 
 	// Identify your application using resource detection
@@ -191,20 +195,25 @@ func SetupGoogleTraceOTEL(ctx context.Context, optFns ...GoogleTraceOption) (shu
 			providerOpts,
 			trace.WithSpanProcessor(
 				opt.spanProcessorWrapper(
-					trace.NewBatchSpanProcessor(exporter),
+					trace.NewBatchSpanProcessor(opt.exporter),
 				),
 			),
 		)
 	} else {
 		providerOpts = append(
 			providerOpts,
-			trace.WithBatcher(exporter),
+			trace.WithBatcher(opt.exporter),
 		)
 	}
 
-	tp := trace.NewTracerProvider(providerOpts...)
+	tp = trace.NewTracerProvider(providerOpts...)
 	shutdownFuncs = append(shutdownFuncs, tp.Shutdown)
-	otel.SetTracerProvider(tp)
+
+	// This option usually needs to be set to false, if we need t test the code
+	// in production environment, we need to set this to true using WithDefaultTracer
+	if opt.setDefaultTracer {
+		otel.SetTracerProvider(tp)
+	}
 
 	// Configure Metric Export to send metrics as OTLP
 	mreader, err := autoexport.NewMetricReader(ctx)
@@ -219,5 +228,5 @@ func SetupGoogleTraceOTEL(ctx context.Context, optFns ...GoogleTraceOption) (shu
 	otel.SetMeterProvider(mp)
 	otel.SetTextMapPropagator(propagation.TraceContext{})
 
-	return shutdown, nil
+	return tp, shutdown, nil
 }
