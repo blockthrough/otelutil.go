@@ -126,16 +126,17 @@ func WithExporter(exporter SpanExporter) TraceOption {
 	}
 }
 
-func WithDefaultTracer() TraceOption {
+func WithNotSetDefaultTracer() TraceOption {
 	return func(opt *traceOpt) {
-		opt.setDefaultTracer = true
+		opt.setDefaultTracer = false
 	}
 }
 
 func SetupTraceOTEL(ctx context.Context, optFns ...TraceOption) (tp *trace.TracerProvider, shutdown func(context.Context) error, err error) {
 	opt := traceOpt{
-		name:       "default-name",
-		sampleRate: 1.0,
+		name:             "default-name",
+		sampleRate:       1.0,
+		setDefaultTracer: true,
 	}
 
 	for _, fn := range optFns {

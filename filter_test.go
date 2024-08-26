@@ -9,6 +9,8 @@ import (
 )
 
 func TestSpanFilterOnlyNames(t *testing.T) {
+	t.Parallel()
+
 	tp, getSpans := createTestTraceProvider(t, otelutil.WithSpanFilterOnlyNames("test-span-1"))
 
 	tracer := tp.Tracer("test-tracer")
@@ -30,6 +32,8 @@ func TestSpanFilterOnlyNames(t *testing.T) {
 }
 
 func TestSpanFilterOnlyScopeNames(t *testing.T) {
+	t.Parallel()
+
 	tp, getSpans := createTestTraceProvider(t, otelutil.WithSpanFilterOnlyScopeNames("test-tracer-1"))
 
 	{
@@ -59,6 +63,8 @@ func TestSpanFilterOnlyScopeNames(t *testing.T) {
 }
 
 func TestMultipleSpanFilters(t *testing.T) {
+	t.Parallel()
+
 	tp, getSpans := createTestTraceProvider(
 		t,
 		otelutil.WithMultipleSpanFilters(
