@@ -157,9 +157,7 @@ func SetupTraceOTEL(ctx context.Context, optFns ...TraceOption) (tp *trace.Trace
 			semconv.ServiceNameKey.String(opt.name),
 		),
 	)
-	if errors.Is(err, resource.ErrPartialResource) || errors.Is(err, resource.ErrSchemaURLConflict) {
-		return nil, nil, err
-	} else if err != nil {
+	if err != nil {
 		return nil, nil, errors.New("failed to create resource: " + err.Error())
 	}
 
