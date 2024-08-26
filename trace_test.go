@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 
 	"github.com/blockthrough/otelutil.go"
@@ -28,12 +27,13 @@ func TestSpanFilter(t *testing.T) {
 
 	tracer := tp.Tracer("test-tracer")
 
-	// Start a span
-	_, span := tracer.Start(context.Background(), "test-span")
-	span.SetAttributes(attribute.String("key", "value"))
+	ctx := context.Background()
+
+	// Start a span with a name
+	ctx, span := tracer.Start(ctx, "test-span")
 	span.End()
 
-	tp.ForceFlush(context.Background())
+	tp.ForceFlush(ctx)
 
 	// Fetch the spans from the TracerProvider
 	spans := getSpans()
