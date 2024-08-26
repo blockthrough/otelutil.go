@@ -10,10 +10,10 @@ import (
 	"github.com/blockthrough/otelutil.go"
 )
 
-func createTestTraceProvider(t *testing.T) (*otelutil.TracerProvider, func() tracetest.SpanStubs) {
+func createTestTraceProvider(t *testing.T, filterFn otelutil.SpanProcessorWrapper) (*otelutil.TracerProvider, func() tracetest.SpanStubs) {
 	// Create a TracerProvider using the Tracetest SDK
 	exp := tracetest.NewInMemoryExporter()
-	tp, shutdown, err := otelutil.SetupTraceOTEL(context.Background(), otelutil.WithExporter(exp))
+	tp, shutdown, err := otelutil.SetupTraceOTEL(context.Background(), otelutil.WithExporter(exp), otelutil.WithSpanProcessor(filterFn))
 	assert.NoError(t, err)
 	t.Cleanup(func() {
 		shutdown(context.Background())
@@ -23,14 +23,17 @@ func createTestTraceProvider(t *testing.T) (*otelutil.TracerProvider, func() tra
 }
 
 func TestSpanFilter(t *testing.T) {
-	tp, getSpans := createTestTraceProvider(t)
+	tp, getSpans := createTestTraceProvider(t, nil)
 
 	tracer := tp.Tracer("test-tracer")
 
 	ctx := context.Background()
 
 	// Start a span with a name
-	ctx, span := tracer.Start(ctx, "test-span")
+	ctx, span := tracer.Start(ctx, "test-span-1")
+	span.End()
+
+	ctx, span = tracer.Start(ctx, "test-span-2")
 	span.End()
 
 	tp.ForceFlush(ctx)
@@ -38,7 +41,8 @@ func TestSpanFilter(t *testing.T) {
 	// Fetch the spans from the TracerProvider
 	spans := getSpans()
 
-	assert.Len(t, spans, 1)
+	assert.Len(t, spans, 2)
 
-	assert.Equal(t, "test-span", spans[0].Name)
+	assert.Equal(t, "test-span-1", spans[0].Name)
+	assert.Equal(t, "test-span-2", spans[1].Name)
 }
