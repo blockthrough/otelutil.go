@@ -4,7 +4,6 @@ go 1.22
 
 require (
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/trace v1.24.1
-	github.com/golang/glog v1.2.2
 	github.com/stretchr/testify v1.9.0
 	go.opentelemetry.io/contrib/detectors/gcp v1.28.0
 	go.opentelemetry.io/contrib/exporters/autoexport v0.53.0
