@@ -11,15 +11,20 @@ import (
 	"github.com/blockthrough/otelutil.go"
 )
 
-func TestSpanFilter(t *testing.T) {
+func createTestTraceProvider(t *testing.T) (*otelutil.TracerProvider, func() tracetest.SpanStubs) {
 	// Create a TracerProvider using the Tracetest SDK
 	exp := tracetest.NewInMemoryExporter()
-
 	tp, shutdown, err := otelutil.SetupTraceOTEL(context.Background(), otelutil.WithExporter(exp))
 	assert.NoError(t, err)
 	t.Cleanup(func() {
 		shutdown(context.Background())
 	})
+
+	return tp, exp.GetSpans
+}
+
+func TestSpanFilter(t *testing.T) {
+	tp, getSpans := createTestTraceProvider(t)
 
 	tracer := tp.Tracer("test-tracer")
 
@@ -31,15 +36,9 @@ func TestSpanFilter(t *testing.T) {
 	tp.ForceFlush(context.Background())
 
 	// Fetch the spans from the TracerProvider
-	spans := exp.GetSpans()
+	spans := getSpans()
 
-	// Apply your span filter here and assert the results
-	if len(spans) != 1 {
-		t.Fatalf("expected 1 span, got %d", len(spans))
-	}
+	assert.Len(t, spans, 1)
 
-	// Further checks on the span
-	if spans[0].Name != "test-span" {
-		t.Errorf("expected span name to be 'test-span', got %s", spans[0].Name)
-	}
+	assert.Equal(t, "test-span", spans[0].Name)
 }

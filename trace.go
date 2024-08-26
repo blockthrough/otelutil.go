@@ -23,6 +23,7 @@ import (
 // Tracer is an alias for oteltrace.Tracer.
 // to simplify the import path for the user.
 type Tracer = oteltrace.Tracer
+type TracerProvider = trace.TracerProvider
 type ReadOnlySpan = trace.ReadOnlySpan
 type SpanExporter = trace.SpanExporter
 
