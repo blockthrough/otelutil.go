@@ -78,6 +78,13 @@ func RecordError(span oteltrace.Span, err *error) {
 	}
 }
 
+// Finish a span and record the error if any, this is a helper function
+// to simplify the code.
+func Finish(span oteltrace.Span, err *error) {
+	RecordError(span, err)
+	span.End()
+}
+
 func NewHandler(handler http.Handler, operation string, opts ...otelhttp.Option) http.Handler {
 	return otelhttp.NewMiddleware(operation, opts...)(handler)
 }
