@@ -3,10 +3,10 @@ package otelutil
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"sync"
 
-	"github.com/golang/glog"
 	"go.opentelemetry.io/contrib/detectors/gcp"
 	"go.opentelemetry.io/contrib/exporters/autoexport"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
@@ -50,7 +50,7 @@ var WithAttributes = oteltrace.WithAttributes
 //		return nil
 //	}(ctx)
 //	if err != nil {
-//		glog.Error(err)
+//		 return err
 //	}
 func Get(name string) Tracer {
 	return otel.GetTracerProvider().Tracer(name)
@@ -158,10 +158,8 @@ func SetupTraceOTEL(ctx context.Context, optFns ...TraceOption) (tp *trace.Trace
 			semconv.ServiceNameKey.String(opt.name),
 		),
 	)
-	if errors.Is(err, resource.ErrPartialResource) || errors.Is(err, resource.ErrSchemaURLConflict) {
-		glog.Error(err)
-	} else if err != nil {
-		glog.Fatalf("resource.New: %v", err)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create resource: %w", err)
 	}
 
 	var shutdownFuncs []func(context.Context) error
