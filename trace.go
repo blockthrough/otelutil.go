@@ -37,6 +37,16 @@ var AttrInt = attribute.Int
 var WithFilter = otelhttp.WithFilter
 var WithAttributes = oteltrace.WithAttributes
 
+var DefaultSpanStartAttributes = []attribute.KeyValue{}
+
+func SetWithDefaultSpanStartAttributes(attrs ...attribute.KeyValue) {
+	DefaultSpanStartAttributes = attrs
+}
+
+func GetWithDefaultSpanStartAttributes() oteltrace.SpanStartEventOption {
+	return oteltrace.WithAttributes(DefaultSpanStartAttributes...)
+}
+
 // Get the Tracer object based on the name
 // for example:
 //
@@ -94,11 +104,11 @@ func Finish(span oteltrace.Span, err *error) {
 var NewTransport = otelhttp.NewTransport
 
 type traceOpt struct {
-	name                 string
-	sampleRate           float64
-	spanProcessorWrapper SpanProcessorWrapper
-	exporter             SpanExporter
-	spanStartAttributes  []attribute.KeyValue
+	name                       string
+	sampleRate                 float64
+	spanProcessorWrapper       SpanProcessorWrapper
+	exporter                   SpanExporter
+	defaultSpanStartAttributes []attribute.KeyValue
 }
 
 type TraceOption func(*traceOpt)
@@ -127,9 +137,9 @@ func WithExporter(exporter SpanExporter) TraceOption {
 	}
 }
 
-func WithSpanStartAttributes(spanStartAttributes ...attribute.KeyValue) TraceOption {
+func WithDefaultSpanStartAttributes(spanStartAttributes ...attribute.KeyValue) TraceOption {
 	return func(opt *traceOpt) {
-		opt.spanStartAttributes = spanStartAttributes
+		opt.defaultSpanStartAttributes = spanStartAttributes
 	}
 }
 
@@ -167,7 +177,7 @@ func SetupTraceOTEL(ctx context.Context, optFns ...TraceOption) (*trace.TracerPr
 	baseSampler := trace.ParentBased(trace.TraceIDRatioBased(opt.sampleRate))
 
 	// The sampler is a decorator that adds additional logic to the base sampler to determine if a span should be sampled
-	sampler := NewSampler(baseSampler, opt.spanStartAttributes...)
+	sampler := NewAttributeSampler(baseSampler, opt.defaultSpanStartAttributes...)
 	providerOpts := []trace.TracerProviderOption{
 		trace.WithResource(res),
 		trace.WithSampler(sampler),

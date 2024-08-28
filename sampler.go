@@ -7,12 +7,12 @@ import (
 )
 
 // sampler -  if the span has the specified attributes and the base sampler would have sampled it, then it will be sampled.
-type sampler struct {
+type attributeSampler struct {
 	base  sdktrace.Sampler
 	attrs map[attribute.Key]attribute.Value
 }
 
-func (cs sampler) ShouldSample(p sdktrace.SamplingParameters) sdktrace.SamplingResult {
+func (cs attributeSampler) ShouldSample(p sdktrace.SamplingParameters) sdktrace.SamplingResult {
 	result := cs.base.ShouldSample(p)
 	if result.Decision != sdktrace.RecordAndSample {
 		return result
@@ -39,16 +39,16 @@ func (cs sampler) ShouldSample(p sdktrace.SamplingParameters) sdktrace.SamplingR
 	return sdktrace.SamplingResult{Decision: sdktrace.Drop, Attributes: p.Attributes, Tracestate: psc.TraceState()}
 }
 
-func (cs sampler) Description() string {
-	return "sampler with base sampler: " + cs.base.Description()
+func (cs attributeSampler) Description() string {
+	return "attribute sampler with base sampler: " + cs.base.Description()
 }
 
-func NewSampler(base sdktrace.Sampler, attrs ...attribute.KeyValue) sdktrace.Sampler {
+func NewAttributeSampler(base sdktrace.Sampler, attrs ...attribute.KeyValue) sdktrace.Sampler {
 	m := map[attribute.Key]attribute.Value{}
 	for _, attr := range attrs {
 		m[attr.Key] = attr.Value
 	}
-	return sampler{
+	return attributeSampler{
 		base:  base,
 		attrs: m,
 	}

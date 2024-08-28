@@ -18,7 +18,7 @@ func createTestTraceProvider(t *testing.T, filterFn otelutil.SpanProcessorWrappe
 		context.Background(),
 		otelutil.WithExporter(exp),
 		otelutil.WithSpanProcessor(filterFn),
-		otelutil.WithSpanStartAttributes(spanStartAttributes...),
+		otelutil.WithDefaultSpanStartAttributes(spanStartAttributes...),
 	)
 	assert.NoError(t, err)
 	t.Cleanup(func() {
