@@ -133,8 +133,9 @@ func WithDefaultSpanStartAttributes(spanStartAttributes ...attribute.KeyValue) T
 
 func SetupTraceOTEL(ctx context.Context, optFns ...TraceOption) (*trace.TracerProvider, func(ctx context.Context) error, error) {
 	opt := traceOpt{
-		name:       "default-name",
-		sampleRate: 1.0,
+		name:             "default-name",
+		sampleRate:       1.0,
+		setDefaultTracer: true,
 	}
 
 	for _, fn := range optFns {
