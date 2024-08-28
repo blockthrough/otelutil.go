@@ -13,15 +13,14 @@ import (
 func createTestTraceProvider(t *testing.T, filterFn otelutil.SpanProcessorWrapper) (*otelutil.TracerProvider, func() tracetest.SpanStubs) {
 	// Create a TracerProvider using the Tracetest SDK
 	exp := tracetest.NewInMemoryExporter()
-	tp, shutdown, err := otelutil.SetupTraceOTEL(
+	tp, err := otelutil.SetupTraceOTEL(
 		context.Background(),
 		otelutil.WithExporter(exp),
 		otelutil.WithSpanProcessor(filterFn),
-		otelutil.WithNotSetDefaultTracer(),
 	)
 	assert.NoError(t, err)
 	t.Cleanup(func() {
-		shutdown(context.Background())
+		tp.Shutdown(context.Background())
 	})
 
 	return tp, exp.GetSpans

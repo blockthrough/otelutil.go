@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/http"
 	"sync"
 
 	"go.opentelemetry.io/contrib/detectors/gcp"
@@ -79,15 +78,15 @@ func RecordError(span oteltrace.Span, err *error) {
 	}
 }
 
+func Start(ctx context.Context, tracer Tracer, name string, opts ...oteltrace.SpanStartOption) (context.Context, oteltrace.Span) {
+	return tracer.Start(ctx, name, opts...)
+}
+
 // Finish a span and record the error if any, this is a helper function
 // to simplify the code.
 func Finish(span oteltrace.Span, err *error) {
 	RecordError(span, err)
 	span.End()
-}
-
-func NewHandler(handler http.Handler, operation string, opts ...otelhttp.Option) http.Handler {
-	return otelhttp.NewMiddleware(operation, opts...)(handler)
 }
 
 var NewTransport = otelhttp.NewTransport
@@ -126,13 +125,7 @@ func WithExporter(exporter SpanExporter) TraceOption {
 	}
 }
 
-func WithNotSetDefaultTracer() TraceOption {
-	return func(opt *traceOpt) {
-		opt.setDefaultTracer = false
-	}
-}
-
-func SetupTraceOTEL(ctx context.Context, optFns ...TraceOption) (tp *trace.TracerProvider, shutdown func(context.Context) error, err error) {
+func SetupTraceOTEL(ctx context.Context, optFns ...TraceOption) (*trace.TracerProvider, error) {
 	opt := traceOpt{
 		name:             "default-name",
 		sampleRate:       1.0,
@@ -144,7 +137,7 @@ func SetupTraceOTEL(ctx context.Context, optFns ...TraceOption) (tp *trace.Trace
 	}
 
 	if opt.exporter == nil {
-		return nil, nil, errors.New("exporter is required")
+		return nil, errors.New("exporter is required")
 	}
 
 	// Identify your application using resource detection
@@ -159,34 +152,18 @@ func SetupTraceOTEL(ctx context.Context, optFns ...TraceOption) (tp *trace.Trace
 		),
 	)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create resource: %w", err)
-	}
-
-	var shutdownFuncs []func(context.Context) error
-
-	// shutdown combines shutdown functions from multiple OpenTelemetry
-	// components into a single function.
-	shutdown = func(ctx context.Context) error {
-		var err error
-		for _, fn := range shutdownFuncs {
-			err = errors.Join(err, fn(ctx))
-		}
-		shutdownFuncs = nil
-		return err
+		return nil, fmt.Errorf("failed to create resource: %w", err)
 	}
 
 	providerOpts := []trace.TracerProviderOption{
 		trace.WithSampler(
-			// NewAlwaysErrorSampler is a custom sampler that samples all error spans
-			// and delegates the sampling decision for non-error spans to the base sampler.
-			NewAlwaysErrorSampler(
-				// The ParentBased sampler respects the sampling decision made by the parent span,
-				// ensuring that once a trace is sampled, all spans within that trace are also sampled.
-				trace.ParentBased(
-					trace.TraceIDRatioBased(opt.sampleRate),
-				),
+			// The ParentBased sampler respects the sampling decision made by the parent span,
+			// ensuring that once a trace is sampled, all spans within that trace are also sampled.
+			trace.ParentBased(
+				trace.TraceIDRatioBased(opt.sampleRate),
 			),
 		),
+
 		trace.WithResource(res),
 	}
 
@@ -206,27 +183,20 @@ func SetupTraceOTEL(ctx context.Context, optFns ...TraceOption) (tp *trace.Trace
 		)
 	}
 
-	tp = trace.NewTracerProvider(providerOpts...)
-	shutdownFuncs = append(shutdownFuncs, tp.Shutdown)
-
-	// This option usually needs to be set to false, if we need t test the code
-	// in production environment, we need to set this to true using WithDefaultTracer
-	if opt.setDefaultTracer {
-		otel.SetTracerProvider(tp)
-	}
-
 	// Configure Metric Export to send metrics as OTLP
 	mreader, err := autoexport.NewMetricReader(ctx)
 	if err != nil {
-		err = errors.Join(err, shutdown(ctx))
-		return
+		return nil, err
 	}
+
 	mp := metric.NewMeterProvider(
 		metric.WithReader(mreader),
 	)
-	shutdownFuncs = append(shutdownFuncs, mp.Shutdown)
+
 	otel.SetMeterProvider(mp)
 	otel.SetTextMapPropagator(propagation.TraceContext{})
 
-	return tp, shutdown, nil
+	tp := trace.NewTracerProvider(providerOpts...)
+
+	return tp, nil
 }
