@@ -11,6 +11,7 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/resource"
@@ -74,6 +75,7 @@ func GetDeferedTracer(name string) func() Tracer {
 
 func RecordError(span oteltrace.Span, err *error) {
 	if err != nil && *err != nil {
+		span.SetStatus(codes.Error, "error recorded")
 		span.RecordError(*err)
 	}
 }
