@@ -98,7 +98,7 @@ type traceOpt struct {
 	sampleRate           float64
 	spanProcessorWrapper SpanProcessorWrapper
 	exporter             SpanExporter
-	setDefaultTracer     bool
+	spanStartAttributes  []attribute.KeyValue
 }
 
 type TraceOption func(*traceOpt)
@@ -127,11 +127,16 @@ func WithExporter(exporter SpanExporter) TraceOption {
 	}
 }
 
+func WithSpanStartAttributes(spanStartAttributes ...attribute.KeyValue) TraceOption {
+	return func(opt *traceOpt) {
+		opt.spanStartAttributes = spanStartAttributes
+	}
+}
+
 func SetupTraceOTEL(ctx context.Context, optFns ...TraceOption) (*trace.TracerProvider, error) {
 	opt := traceOpt{
-		name:             "default-name",
-		sampleRate:       1.0,
-		setDefaultTracer: true,
+		name:       "default-name",
+		sampleRate: 1.0,
 	}
 
 	for _, fn := range optFns {
@@ -157,16 +162,15 @@ func SetupTraceOTEL(ctx context.Context, optFns ...TraceOption) (*trace.TracerPr
 		return nil, fmt.Errorf("failed to create resource: %w", err)
 	}
 
-	providerOpts := []trace.TracerProviderOption{
-		trace.WithSampler(
-			// The ParentBased sampler respects the sampling decision made by the parent span,
-			// ensuring that once a trace is sampled, all spans within that trace are also sampled.
-			trace.ParentBased(
-				trace.TraceIDRatioBased(opt.sampleRate),
-			),
-		),
+	// The ParentBased sampler respects the sampling decision made by the parent span,
+	// ensuring that once the parent span is sampled, all child spans are also sampled.
+	baseSampler := trace.ParentBased(trace.TraceIDRatioBased(opt.sampleRate))
 
+	// The sampler is a decorator that adds additional logic to the base sampler to determine if a span should be sampled
+	sampler := NewSampler(baseSampler, opt.spanStartAttributes...)
+	providerOpts := []trace.TracerProviderOption{
 		trace.WithResource(res),
+		trace.WithSampler(sampler),
 	}
 
 	if opt.spanProcessorWrapper != nil {

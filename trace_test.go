@@ -5,18 +5,20 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 
 	"github.com/blockthrough/otelutil.go"
 )
 
-func createTestTraceProvider(t *testing.T, filterFn otelutil.SpanProcessorWrapper) (*otelutil.TracerProvider, func() tracetest.SpanStubs) {
+func createTestTraceProvider(t *testing.T, filterFn otelutil.SpanProcessorWrapper, spanStartAttributes ...attribute.KeyValue) (*otelutil.TracerProvider, func() tracetest.SpanStubs) {
 	// Create a TracerProvider using the Tracetest SDK
 	exp := tracetest.NewInMemoryExporter()
 	tp, err := otelutil.SetupTraceOTEL(
 		context.Background(),
 		otelutil.WithExporter(exp),
 		otelutil.WithSpanProcessor(filterFn),
+		otelutil.WithSpanStartAttributes(spanStartAttributes...),
 	)
 	assert.NoError(t, err)
 	t.Cleanup(func() {
