@@ -30,22 +30,7 @@ type SpanExporter = trace.SpanExporter
 // Use SpanFromContext to get the span from the context.
 var SpanFromContext = oteltrace.SpanFromContext
 
-var AttrString = attribute.String
-var AttrInt64 = attribute.Int64
-var AttrInt = attribute.Int
-
 var WithFilter = otelhttp.WithFilter
-var WithAttributes = oteltrace.WithAttributes
-
-var DefaultSpanStartAttributes = []attribute.KeyValue{}
-
-func SetWithDefaultSpanStartAttributes(attrs ...attribute.KeyValue) {
-	DefaultSpanStartAttributes = attrs
-}
-
-func GetWithDefaultSpanStartAttributes() oteltrace.SpanStartEventOption {
-	return oteltrace.WithAttributes(DefaultSpanStartAttributes...)
-}
 
 // Get the Tracer object based on the name
 // for example:
@@ -105,6 +90,7 @@ type traceOpt struct {
 	spanProcessorWrapper       SpanProcessorWrapper
 	exporter                   SpanExporter
 	defaultSpanStartAttributes []attribute.KeyValue
+	setDefaultTracer           bool
 }
 
 type TraceOption func(*traceOpt)
@@ -133,13 +119,19 @@ func WithExporter(exporter SpanExporter) TraceOption {
 	}
 }
 
+func WithNotSetDefaultTracer() TraceOption {
+	return func(opt *traceOpt) {
+		opt.setDefaultTracer = false
+	}
+}
+
 func WithDefaultSpanStartAttributes(spanStartAttributes ...attribute.KeyValue) TraceOption {
 	return func(opt *traceOpt) {
 		opt.defaultSpanStartAttributes = spanStartAttributes
 	}
 }
 
-func SetupTraceOTEL(ctx context.Context, optFns ...TraceOption) (*trace.TracerProvider, error) {
+func SetupTraceOTEL(ctx context.Context, optFns ...TraceOption) (*trace.TracerProvider, func(ctx context.Context) error, error) {
 	opt := traceOpt{
 		name:       "default-name",
 		sampleRate: 1.0,
@@ -150,7 +142,7 @@ func SetupTraceOTEL(ctx context.Context, optFns ...TraceOption) (*trace.TracerPr
 	}
 
 	if opt.exporter == nil {
-		return nil, errors.New("exporter is required")
+		return nil, nil, errors.New("exporter is required")
 	}
 
 	// Identify your application using resource detection
@@ -165,7 +157,13 @@ func SetupTraceOTEL(ctx context.Context, optFns ...TraceOption) (*trace.TracerPr
 		),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create resource: %w", err)
+		return nil, nil, fmt.Errorf("failed to create resource: %w", err)
+	}
+
+	// Configure Metric Export to send metrics as OTLP
+	mreader, err := autoexport.NewMetricReader(ctx)
+	if err != nil {
+		return nil, nil, err
 	}
 
 	// The ParentBased sampler respects the sampling decision made by the parent span,
@@ -195,12 +193,6 @@ func SetupTraceOTEL(ctx context.Context, optFns ...TraceOption) (*trace.TracerPr
 		)
 	}
 
-	// Configure Metric Export to send metrics as OTLP
-	mreader, err := autoexport.NewMetricReader(ctx)
-	if err != nil {
-		return nil, err
-	}
-
 	mp := metric.NewMeterProvider(
 		metric.WithReader(mreader),
 	)
@@ -210,5 +202,13 @@ func SetupTraceOTEL(ctx context.Context, optFns ...TraceOption) (*trace.TracerPr
 
 	tp := trace.NewTracerProvider(providerOpts...)
 
-	return tp, nil
+	shutdown := func(ctx context.Context) error {
+		return errors.Join(tp.Shutdown(ctx), mp.Shutdown(ctx))
+	}
+
+	if opt.setDefaultTracer {
+		otel.SetTracerProvider(tp)
+	}
+
+	return tp, shutdown, nil
 }
