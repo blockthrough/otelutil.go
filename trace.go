@@ -90,10 +90,6 @@ func RecordError(span oteltrace.Span, err *error) {
 	}
 }
 
-func Start(ctx context.Context, tracer Tracer, name string, opts ...oteltrace.SpanStartOption) (context.Context, oteltrace.Span) {
-	return tracer.Start(ctx, name, opts...)
-}
-
 // Finish a span and record the error if any, this is a helper function
 // to simplify the code.
 func Finish(span oteltrace.Span, err *error) {
