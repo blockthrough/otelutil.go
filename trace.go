@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/http"
 	"sync"
 
 	"go.opentelemetry.io/contrib/detectors/gcp"
@@ -12,6 +11,7 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/resource"
@@ -30,12 +30,7 @@ type SpanExporter = trace.SpanExporter
 // Use SpanFromContext to get the span from the context.
 var SpanFromContext = oteltrace.SpanFromContext
 
-var AttrString = attribute.String
-var AttrInt64 = attribute.Int64
-var AttrInt = attribute.Int
-
 var WithFilter = otelhttp.WithFilter
-var WithAttributes = oteltrace.WithAttributes
 
 // Get the Tracer object based on the name
 // for example:
@@ -75,6 +70,7 @@ func GetDeferedTracer(name string) func() Tracer {
 
 func RecordError(span oteltrace.Span, err *error) {
 	if err != nil && *err != nil {
+		span.SetStatus(codes.Error, "error recorded")
 		span.RecordError(*err)
 	}
 }
@@ -86,18 +82,15 @@ func Finish(span oteltrace.Span, err *error) {
 	span.End()
 }
 
-func NewHandler(handler http.Handler, operation string, opts ...otelhttp.Option) http.Handler {
-	return otelhttp.NewMiddleware(operation, opts...)(handler)
-}
-
 var NewTransport = otelhttp.NewTransport
 
 type traceOpt struct {
-	name                 string
-	sampleRate           float64
-	spanProcessorWrapper SpanProcessorWrapper
-	exporter             SpanExporter
-	setDefaultTracer     bool
+	name                       string
+	sampleRate                 float64
+	spanProcessorWrapper       SpanProcessorWrapper
+	exporter                   SpanExporter
+	defaultSpanStartAttributes []attribute.KeyValue
+	setDefaultTracer           bool
 }
 
 type TraceOption func(*traceOpt)
@@ -132,7 +125,13 @@ func WithNotSetDefaultTracer() TraceOption {
 	}
 }
 
-func SetupTraceOTEL(ctx context.Context, optFns ...TraceOption) (tp *trace.TracerProvider, shutdown func(context.Context) error, err error) {
+func WithDefaultSpanStartAttributes(spanStartAttributes ...attribute.KeyValue) TraceOption {
+	return func(opt *traceOpt) {
+		opt.defaultSpanStartAttributes = spanStartAttributes
+	}
+}
+
+func SetupTraceOTEL(ctx context.Context, optFns ...TraceOption) (*trace.TracerProvider, func(ctx context.Context) error, error) {
 	opt := traceOpt{
 		name:             "default-name",
 		sampleRate:       1.0,
@@ -162,32 +161,21 @@ func SetupTraceOTEL(ctx context.Context, optFns ...TraceOption) (tp *trace.Trace
 		return nil, nil, fmt.Errorf("failed to create resource: %w", err)
 	}
 
-	var shutdownFuncs []func(context.Context) error
-
-	// shutdown combines shutdown functions from multiple OpenTelemetry
-	// components into a single function.
-	shutdown = func(ctx context.Context) error {
-		var err error
-		for _, fn := range shutdownFuncs {
-			err = errors.Join(err, fn(ctx))
-		}
-		shutdownFuncs = nil
-		return err
+	// Configure Metric Export to send metrics as OTLP
+	mreader, err := autoexport.NewMetricReader(ctx)
+	if err != nil {
+		return nil, nil, err
 	}
 
+	// The ParentBased sampler respects the sampling decision made by the parent span,
+	// ensuring that once the parent span is sampled, all child spans are also sampled.
+	baseSampler := trace.ParentBased(trace.TraceIDRatioBased(opt.sampleRate))
+
+	// The sampler is a decorator that adds additional logic to the base sampler to determine if a span should be sampled
+	sampler := NewAttributeSampler(baseSampler, opt.defaultSpanStartAttributes...)
 	providerOpts := []trace.TracerProviderOption{
-		trace.WithSampler(
-			// NewAlwaysErrorSampler is a custom sampler that samples all error spans
-			// and delegates the sampling decision for non-error spans to the base sampler.
-			NewAlwaysErrorSampler(
-				// The ParentBased sampler respects the sampling decision made by the parent span,
-				// ensuring that once a trace is sampled, all spans within that trace are also sampled.
-				trace.ParentBased(
-					trace.TraceIDRatioBased(opt.sampleRate),
-				),
-			),
-		),
 		trace.WithResource(res),
+		trace.WithSampler(sampler),
 	}
 
 	if opt.spanProcessorWrapper != nil {
@@ -206,27 +194,22 @@ func SetupTraceOTEL(ctx context.Context, optFns ...TraceOption) (tp *trace.Trace
 		)
 	}
 
-	tp = trace.NewTracerProvider(providerOpts...)
-	shutdownFuncs = append(shutdownFuncs, tp.Shutdown)
-
-	// This option usually needs to be set to false, if we need t test the code
-	// in production environment, we need to set this to true using WithDefaultTracer
-	if opt.setDefaultTracer {
-		otel.SetTracerProvider(tp)
-	}
-
-	// Configure Metric Export to send metrics as OTLP
-	mreader, err := autoexport.NewMetricReader(ctx)
-	if err != nil {
-		err = errors.Join(err, shutdown(ctx))
-		return
-	}
 	mp := metric.NewMeterProvider(
 		metric.WithReader(mreader),
 	)
-	shutdownFuncs = append(shutdownFuncs, mp.Shutdown)
+
 	otel.SetMeterProvider(mp)
 	otel.SetTextMapPropagator(propagation.TraceContext{})
+
+	tp := trace.NewTracerProvider(providerOpts...)
+
+	shutdown := func(ctx context.Context) error {
+		return errors.Join(tp.Shutdown(ctx), mp.Shutdown(ctx))
+	}
+
+	if opt.setDefaultTracer {
+		otel.SetTracerProvider(tp)
+	}
 
 	return tp, shutdown, nil
 }
