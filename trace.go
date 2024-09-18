@@ -72,6 +72,14 @@ func RecordError(span oteltrace.Span, err *error) {
 	if err != nil && *err != nil {
 		span.SetStatus(codes.Error, "error recorded")
 		span.RecordError(*err)
+
+		// since Grafana's Google Trace plugin doesn't support event and logs,
+		// we need to add the error message as an attribute to the span
+		// Will remove this once we migrate to Grafana's Tempo
+		span.SetAttributes(
+			attribute.Bool("has_error", true),
+			attribute.String("error_message", (*err).Error()),
+		)
 	}
 }
 
