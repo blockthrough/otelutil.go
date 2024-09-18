@@ -77,7 +77,7 @@ func RecordError(span oteltrace.Span, err *error) {
 		// we need to add the error message as an attribute to the span
 		// Will remove this once we migrate to Grafana's Tempo
 		span.SetAttributes(
-			attribute.Int("error.code", 1),
+			attribute.Int64("error.code", int64(codes.Error)),
 			attribute.String("error.message", (*err).Error()),
 		)
 	}
