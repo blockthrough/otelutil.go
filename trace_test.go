@@ -90,11 +90,11 @@ func TestError(t *testing.T) {
 
 	s := spans[0]
 
-	hasError, ok := getAttribute(s.Attributes, "has_error")
+	hasError, ok := getAttribute(s.Attributes, "error.code")
 	assert.True(t, ok)
-	assert.Equal(t, true, hasError.AsBool())
+	assert.Equal(t, int64(1), hasError.AsInt64())
 
-	errMsg, ok := getAttribute(s.Attributes, "error_message")
+	errMsg, ok := getAttribute(s.Attributes, "error.message")
 	assert.True(t, ok)
 	assert.Equal(t, "test-error", errMsg.AsString())
 }
